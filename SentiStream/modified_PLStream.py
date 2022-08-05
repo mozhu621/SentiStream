@@ -53,8 +53,7 @@ class unsupervised_OSA(MapFunction):
         self.collector = []
         self.cleaned_text = []
         self.stop_words = stopwords.words('english')
-        self.collector_size = 2000
-
+        self.collector_size = 200
 
         # model pruning
         self.LRU_index = ['good', 'bad']
@@ -68,7 +67,6 @@ class unsupervised_OSA(MapFunction):
         self.timer = time()
         # self.time_to_reset = 30
         self.time_to_reset = 30
-
 
         # similarity-based classification preparation
         self.true_ref_neg = []
@@ -175,7 +173,9 @@ class unsupervised_OSA(MapFunction):
         logger.warning('model_merge')
         if model1[0] == 'labelled':
             # logging.warning(model1)
-            return (model1[1]) + (model2[1])
+            logging.warning(model2[2])
+            # logging.warning(model1[1] + model2[1])
+            return 'labelled', model1[1] + model2[1]
         elif model1[0] == 'acc':
             return (float(model1[1]) + float(model2[1])) / 2
         # actual merging taking place
@@ -289,7 +289,7 @@ class unsupervised_OSA(MapFunction):
             self.flag = True
             # logging.warning("model 1 merge time: " + str(time() - model1[2]))
             # logging.warning("model 2 merge time: " + str(time() - model2[2]))
-            return model_new
+            return 'model', model_new
 
     def map(self, tweet):
         """
@@ -319,7 +319,7 @@ class unsupervised_OSA(MapFunction):
                 self.timer = time()
                 return model_to_merge
             else:
-                not_yet = ('labelled', classify_result)
+                not_yet = ('labelled', classify_result, len(classify_result))
                 self.labelled_dataset = []
                 return not_yet
         else:
@@ -435,7 +435,7 @@ def unsupervised_stream(ds, map_parallelism=1, reduce_parallelism=2):
     ds = ds.map(unsupervised_OSA()).set_parallelism(map_parallelism)
     ds = ds.filter(lambda x: x[0] != 'collecting')
     ds = ds.key_by(lambda x: x[0], key_type=Types.STRING())
-    ds = ds.reduce(lambda x, y: (x[0], unsupervised_OSA().model_merge(x, y))).set_parallelism(reduce_parallelism)
+    ds = ds.reduce(lambda x, y: (unsupervised_OSA().model_merge(x, y))).set_parallelism(reduce_parallelism)
     ds = ds.filter(lambda x: x[0] != 'model').map(lambda x: x[1])
     # ds = ds.map(for_output()).set_parallelism(1))
     ds = ds.flat_map(split)  # always put output_type before passing it to file sink
@@ -454,7 +454,7 @@ if __name__ == '__main__':
     f = pd.read_csv('./train.csv', header=None)  # , encoding='ISO-8859-1'
     f.columns = ["label", "review"]
     # 20,000 data for quick testing
-    test_N = 20000
+    test_N = 10000
     true_label = list(f.label)[:test_N]
     for i in range(len(true_label)):
         if true_label[i] == 1:
@@ -464,7 +464,7 @@ if __name__ == '__main__':
 
     # yelp_review = list(f.review)
     yelp_review = list(f.review)[:test_N]
-    print(len(yelp_review))
+    # print(len(yelp_review))
     data_stream = []
     for i in range(len(yelp_review)):
         data_stream.append((i, int(true_label[i]), yelp_review[i]))
@@ -478,9 +478,8 @@ if __name__ == '__main__':
     ds = env.from_collection(collection=data_stream)
     # always update ds variable
     ds = unsupervised_stream(ds, map_parallelism=parallelism)
-
-    collection = ds.execute_and_collect()
-    # env.execute("osa_job")
-    for col in collection:
-        print(col)
+    ds = ds = ds.map(lambda x: str(x), output_type=Types.STRING()).add_sink(StreamingFileSink  # .set_parallelism(2)
+                                                .for_row_format('./output', Encoder.simple_string_encoder())
+                                                .build())
+    env.execute("osa_job")
     print(time() - start_time)
