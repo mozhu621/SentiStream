@@ -159,7 +159,7 @@ def merged_stream(ds1, ds2):
 def generate_new_label(ds, ds_print=None):
     ds = ds.map(lambda x: x[:-1])
     if not ds_print:
-        ds = ds.map(lambda x: str(x[:-1])).add_sink(StreamingFileSink  # .set_parallelism(2)
+        ds = ds.map(lambda x: str(x[:-1]), output_type=Types.STRING()).add_sink(StreamingFileSink  # .set_parallelism(2)
                                                     .for_row_format('./senti_output', Encoder.simple_string_encoder())
                                                     .build())
     return ds
