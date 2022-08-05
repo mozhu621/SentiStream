@@ -169,12 +169,10 @@ def calculate_accuracy(ds):
     data = ds.execute_and_collect()
     true_label = []
     predicted_label = []
-    results = []
     # print(data)
     for result in data:
-        true_label.append(results[-1])
-        predicted_label.append(results[0])
-        results.append(results)
+        true_label.append(result[-1])
+        predicted_label.append(result[0])
     if true_label:
         return accuracy_score(true_label, predicted_label)
     return 'no data for accuracy'
@@ -215,10 +213,10 @@ if __name__ == '__main__':
 
     # input_path = './yelp_review_polarity_csv/test.csv'
     # if input_path is not None:
-    # f = pd.read_csv('./yelp_review_polarity_csv/test.csv', header=None)  # , encoding='ISO-8859-1'
-    f = pd.read_csv('./exp_test.csv', header=None)  # , encoding='ISO-8859-1'
+    f = pd.read_csv('./yelp_review_polarity_csv/test.csv', header=None)  # , encoding='ISO-8859-1'
+    # f = pd.read_csv('./exp_test.csv', header=None)  # , encoding='ISO-8859-1'
     f.columns = ["label", "review"]
-    test_N = 10
+    test_N = 200
     f.loc[f['label'] == 1, 'label'] = 0
     f.loc[f['label'] == 2, 'label'] = 1
 
