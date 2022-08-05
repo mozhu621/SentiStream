@@ -53,7 +53,8 @@ class unsupervised_OSA(MapFunction):
         self.collector = []
         self.cleaned_text = []
         self.stop_words = stopwords.words('english')
-        self.collector_size = 10
+        self.collector_size = 2000
+
 
         # model pruning
         self.LRU_index = ['good', 'bad']
@@ -67,6 +68,7 @@ class unsupervised_OSA(MapFunction):
         self.timer = time()
         # self.time_to_reset = 30
         self.time_to_reset = 30
+
 
         # similarity-based classification preparation
         self.true_ref_neg = []
@@ -285,8 +287,8 @@ class unsupervised_OSA(MapFunction):
                                            model1)
             self.save_model(model_new)
             self.flag = True
-            logging.warning("model 1 merge time: " + str(time() - model1[2]))
-            logging.warning("model 2 merge time: " + str(time() - model2[2]))
+            # logging.warning("model 1 merge time: " + str(time() - model1[2]))
+            # logging.warning("model 2 merge time: " + str(time() - model2[2]))
             return model_new
 
     def map(self, tweet):
@@ -318,6 +320,7 @@ class unsupervised_OSA(MapFunction):
                 return model_to_merge
             else:
                 not_yet = ('labelled', classify_result)
+                self.labelled_dataset = []
                 return not_yet
         else:
             return 'collecting', '1'
@@ -451,7 +454,7 @@ if __name__ == '__main__':
     f = pd.read_csv('./train.csv', header=None)  # , encoding='ISO-8859-1'
     f.columns = ["label", "review"]
     # 20,000 data for quick testing
-    test_N = 100
+    test_N = 20000
     true_label = list(f.label)[:test_N]
     for i in range(len(true_label)):
         if true_label[i] == 1:
@@ -476,6 +479,8 @@ if __name__ == '__main__':
     # always update ds variable
     ds = unsupervised_stream(ds, map_parallelism=parallelism)
 
-    ds.print()
-    env.execute("osa_job")
+    collection = ds.execute_and_collect()
+    # env.execute("osa_job")
+    for col in collection:
+        print(col)
     print(time() - start_time)
