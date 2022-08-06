@@ -19,7 +19,7 @@ def join(x, y):
 
 
 class Supervised_OSA_inference(MapFunction):
-    def __init__(self, with_accuracy=True):
+    def __init__(self, collector_size, with_accuracy=True):
         """
         :param with_accuracy: True if labels are provided to the datastream. default value is True
         """
@@ -27,11 +27,12 @@ class Supervised_OSA_inference(MapFunction):
         self.data = []
         self.collector = []
         self.output = []
-        self.collector_size = 5
+        self.collector_size = collector_size
         self.with_accuracy = with_accuracy
         self.redis = None  # do not set redis variable here it gives error
         self.time_threshold = 10 * 60  # time threshold set to 10 mins
         self.start_time = time()
+        self.counter = 0
 
     def open(self, runtime_context: RuntimeContext):
         """
@@ -59,6 +60,10 @@ class Supervised_OSA_inference(MapFunction):
 
     def map(self, tweet):
         # logging.warning(tweet)
+        if self.counter % 1000 == 0:
+            logging.warning("sup osa inf counter count: " + str(self.counter))
+            logging.warning(tweet[0])
+        self.counter += 1
         self.data.append(tweet)
 
         if self.with_accuracy:
@@ -126,6 +131,7 @@ class Classifier(MapFunction):
         return func(self.model, self.data)
 
     def map(self, ls):
+        logging.warning("map classifier")
         for i in range(len(ls)):
             self.data.append(ls[i][1])
         confidence = self.get_confidence()
@@ -140,11 +146,12 @@ class Classifier(MapFunction):
         return ls
 
 
-def classifier(ds):
-    ds = ds.map(Supervised_OSA_inference()).filter(lambda i: i != 'collecting')
+def classifier(ds, collector_size,word_vector_model_parallelism=4,classifier_parallelism=2):
+    # ds = ds.map(Supervised_OSA_inference(collector_size)).filter(lambda i: i != 'collecting')
+    ds = ds.map(Supervised_OSA_inference(collector_size)).set_parallelism(2).filter(lambda i: i != 'collecting')
     # ds.print()
     # ds.flat_map(split).print() #data size is uneven due to use of collector
-    ds = ds.map(Classifier()).flat_map(split)
+    ds = ds.map(Classifier()).set_parallelism(8).flat_map(split)
     return ds
 
 
@@ -155,14 +162,15 @@ if __name__ == '__main__':
 
     # input_path = './yelp_review_polarity_csv/test.csv'
     # if input_path is not None:
-    f = pd.read_csv('./exp_train.csv', header=None)  # , encoding='ISO-8859-1'
+    f = pd.read_csv('./train.csv', header=None)  # , encoding='ISO-8859-1'
     f.columns = ["label", "review"]
 
     f.loc[f['label'] == 1, 'label'] = 0
     f.loc[f['label'] == 2, 'label'] = 1
-
-    true_label = f.label
-    yelp_review = f.review
+    collector_size = 50000
+    test_N = 100000
+    true_label = f.label[:test_N]
+    yelp_review = f.review[:test_N]
     data_stream = []
 
     for i in range(len(yelp_review)):
@@ -177,7 +185,7 @@ if __name__ == '__main__':
 
     #  always specify output_type when writing to file
 
-    ds = classifier(ds)
+    ds = classifier(ds, collector_size)
 
     # .key_by(lambda x: x[0])
     ds.print()
