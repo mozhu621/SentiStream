@@ -4,6 +4,7 @@ import argparse
 import numpy as np
 import logging
 
+from pyflink.common import Types
 from pyflink.datastream import StreamExecutionEnvironment
 from pyflink.datastream import CheckpointingMode
 import pandas as pd
@@ -33,7 +34,7 @@ np.warnings.filterwarnings('ignore', category=np.VisibleDeprecationWarning)
 def default_confidence(ls, myDict, otherDict):
     # logging.warning('dict1:' + str(myDict.items()))
     # logging.warning('dict2:' + str(myDict.items()))
-    logging.warning(ls)
+    # logging.warning(ls)
     # labels
     l1 = myDict[ls[0]][1]
     l2 = otherDict[ls[0]][1]
@@ -63,7 +64,7 @@ def collect(ls, myDict, otherDict, log=False):
         if myDict[ls[0]] is None:
             myDict[ls[0]] = ls[1:-2] + [ls[-1]]
 
-    logging.warning('mydict in collecting:' + str(myDict.items()))
+    # logging.warning('mydict in collecting:' + str(myDict.items()))
     return 'collecting'
 
 
@@ -105,6 +106,7 @@ class Evaluation(CoMapFunction):
         self.dict1 = defaultdict(lambda: None)  # for first stream
         self.dict2 = defaultdict(lambda: None)  # for second stream
         self.confidence = 0.5
+        self.counter = 0
 
     def calculate_confidence(self, ls, myDict, otherDict, func=default_confidence):
         """
@@ -124,10 +126,10 @@ class Evaluation(CoMapFunction):
         return func(ls, myDict, otherDict)
 
     def map(self, ls, myDict, otherDict, log=False):
-        if log:
-            logging.warning("in map: " + str(ls))
-            logging.warning(self.dict1.items())
-            logging.warning(self.dict2.items())
+        # if log:
+        #     logging.warning("in map: " + str(ls))
+        #     logging.warning(self.dict1.items())
+        #     logging.warning(self.dict2.items())
         s = collect(ls, myDict, otherDict, log)
         if s == 'eval':
             confidence = self.calculate_confidence(ls, myDict, otherDict)
@@ -136,12 +138,15 @@ class Evaluation(CoMapFunction):
             return s
 
     def map1(self, ls):
-        logging.warning("map1")
+        # logging.warning("map1")
         # logging.warning(ls)
         return self.map(ls, self.dict1, self.dict2)
 
     def map2(self, ls):
-        logging.warning("map2")
+        if self.counter % 1000 == 0:
+
+            logging.warning("comap2 counter count: " + str(self.counter))
+        self.counter += 1
         return self.map(ls, self.dict2, self.dict1, True)
 
 
@@ -160,8 +165,9 @@ def generate_new_label(ds, ds_print=None):
     ds = ds.map(lambda x: x[:-1])
     if not ds_print:
         ds = ds.map(lambda x: str(x[:-1]), output_type=Types.STRING()).add_sink(StreamingFileSink  # .set_parallelism(2)
-                                                    .for_row_format('./senti_output', Encoder.simple_string_encoder())
-                                                    .build())
+                                                                                .for_row_format('./senti_output',
+                                                                                                Encoder.simple_string_encoder())
+                                                                                .build())
     return ds
 
 
@@ -211,12 +217,16 @@ if __name__ == '__main__':
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
     start_time = time()
 
+    test_N = 100000
+    collector_size = 2000
+    unsupervised_map_parallelism = 4
+    classifier_collector_size = 10000
+
     # input_path = './yelp_review_polarity_csv/test.csv'
     # if input_path is not None:
     f = pd.read_csv('./yelp_review_polarity_csv/test.csv', header=None)  # , encoding='ISO-8859-1'
     # f = pd.read_csv('./exp_test.csv', header=None)  # , encoding='ISO-8859-1'
     f.columns = ["label", "review"]
-    test_N = 200
     f.loc[f['label'] == 1, 'label'] = 0
     f.loc[f['label'] == 2, 'label'] = 1
 
@@ -234,10 +244,10 @@ if __name__ == '__main__':
     env.get_checkpoint_config().set_checkpointing_mode(CheckpointingMode.EXACTLY_ONCE)
     ds = env.from_collection(collection=data_stream)
 
-    ds1 = unsupervised_stream(ds)
+    ds1 = unsupervised_stream(ds, collector_size, map_parallelism=unsupervised_map_parallelism)
     # ds1.print()
     # print(calculate_PLStream_accuracy(ds1))
-    ds2 = classifier(ds)
+    ds2 = classifier(ds, classifier_collector_size)
     # ds2.print()
     # print(calculate_classifier_accuracy(ds2))
     ds = merged_stream(ds1, ds2)
