@@ -173,9 +173,16 @@ class unsupervised_OSA(MapFunction):
         logger.warning('model_merge')
         if model1[0] == 'labelled':
             # logging.warning(model1)
-            logging.warning(model2[2])
+            # logging.warning(model2[2])
             # logging.warning(model1[1] + model2[1])
-            return 'labelled', model1[1] + model2[1]
+            # logging.warning("label in model1")
+            # for l in (model1[1]):
+            #     logging.warning(l[0])
+            # logging.warning("label in model2")
+            # for l in (model2[1]):
+            #     logging.warning(l[0])
+            # return 'labelled', model1[1] + model2[1]
+            return model2
         elif model1[0] == 'acc':
             return (float(model1[1]) + float(model2[1])) / 2
         # actual merging taking place
@@ -320,6 +327,8 @@ class unsupervised_OSA(MapFunction):
                 return model_to_merge
             else:
                 not_yet = ('labelled', classify_result, len(classify_result))
+                # for i in range(len(self.labelled_dataset)) :
+                #     logging.warning("label dump: "+str(self.labelled_dataset[i][0])+' '+str(i)+'/'+str(len(self.labelled_dataset)))
                 self.labelled_dataset = []
                 return not_yet
         else:
@@ -454,7 +463,7 @@ if __name__ == '__main__':
     f = pd.read_csv('./train.csv', header=None)  # , encoding='ISO-8859-1'
     f.columns = ["label", "review"]
     # 20,000 data for quick testing
-    test_N = 10000
+    test_N = 20000
     true_label = list(f.label)[:test_N]
     for i in range(len(true_label)):
         if true_label[i] == 1:
@@ -481,5 +490,6 @@ if __name__ == '__main__':
     ds = ds = ds.map(lambda x: str(x), output_type=Types.STRING()).add_sink(StreamingFileSink  # .set_parallelism(2)
                                                 .for_row_format('./output', Encoder.simple_string_encoder())
                                                 .build())
+    # ds.print()
     env.execute("osa_job")
     print(time() - start_time)
