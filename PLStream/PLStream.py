@@ -43,13 +43,13 @@ class for_output(MapFunction):
 
 class unsupervised_OSA(MapFunction):
 
-    def __init__(self):
+    def __init__(self, collector_size):
         # collection
         self.true_label = []
         self.collector = []
         self.cleaned_text = []
         self.stop_words = stopwords.words('english')
-        self.collector_size = 10
+        self.collector_size = collector_size
 
         # model pruning
         self.LRU_index = ['good', 'bad']
@@ -122,7 +122,7 @@ class unsupervised_OSA(MapFunction):
             clean_word_list.remove('')
         self.cleaned_text.append(clean_word_list)
         if len(self.cleaned_text) >= self.collector_size:
-            logger.info('text to word list update model')
+            # logger.info('text to word list update model')
             ans = self.update_model(self.cleaned_text)
             return ans
         else:
@@ -164,11 +164,20 @@ class unsupervised_OSA(MapFunction):
 
     def model_merge(self, model1, model2):
         if model1[0] == 'labelled':
-            return (model1[1]) + (model2[1])
+            return 'labelled', (model1[1]) + (model2[1])
         elif model1[0] == 'acc':
-            return (float(model1[1]) + float(model2[1])) / 2
+            # logging.warning('acc')
+            # logging.warning("model 1 len: "+str(model1[2]))
+            # logging.warning("model 1 acc: "+str(model1[1]))
+            # logging.warning("model 2 len: "+str(model2[2]))
+            # logging.warning("model 2 acc: "+str(model2[1]))
+            # logging.warning(float(model1[1]) * model1[2] + float(model2[1]) * model2[2])
+            # logging.warning(model1[2]+model2[2])
+            # return 'acc', (float(model1[1]) * model1[2] + float(model2[1]) * model2[2]) / \
+            #        (model1[2] + model2[2]), model1[2] + model2[2]
+            return 'acc', (float(model1[1])  + float(model2[1]) ) /2, model1[2] + model2[2]
         elif model1[0] == 'model':
-            logger.info('model_merge model')
+            # logger.info('model_merge model')
             model1 = model1[1]
             model2 = model2[1]
             words1 = copy.deepcopy(model1.wv.index_to_key)
@@ -275,7 +284,7 @@ class unsupervised_OSA(MapFunction):
                                            np.array(final_code), np.array(final_point), model1)
             self.save_model(model_new)
             self.flag = True
-            return model_new
+            return 'model', model_new
 
     def map(self, tweet):
         # logger.info(tweet[0][:20] + '... ' + str(tweet[1]))
@@ -321,7 +330,6 @@ class unsupervised_OSA(MapFunction):
 
         classify_result = self.eval(new_sentences, call_model)
         self.cleaned_text = []
-        self.true_label = []
         if time() - self.timer >= self.time_to_reset:
             call_model = self.model_prune(call_model)
             model_to_merge = ('model', call_model)
@@ -331,7 +339,9 @@ class unsupervised_OSA(MapFunction):
             if MODE == 'LABEL':
                 not_yet = ('labelled', classify_result)
             else:
-                not_yet = ('acc', classify_result)
+                not_yet = ('acc', classify_result, len(self.predictions))
+                self.predictions = []
+                self.true_label = []
             return not_yet
 
     def eval(self, tweets, model):
@@ -343,14 +353,14 @@ class unsupervised_OSA(MapFunction):
         logger.info('prediction count:negative prediction = ' + str(self.predictions.count(0)) + ' positive prediction '
                                                                                                  '= ' + str(
             self.predictions.count(1)))
-        self.neg_coefficient = self.predictions.count(0) / (self.predictions.count(1)+self.predictions.count(0))
+        self.neg_coefficient = self.predictions.count(0) / (self.predictions.count(1) + self.predictions.count(0))
         self.pos_coefficient = 1 - self.neg_coefficient
         if MODE == "LABEL":
             self.collector = []
             ans = self.labelled_dataset
         else:
             ans = accuracy_score(self.true_label, self.predictions)
-        self.predictions = []
+        # self.predictions = []
         return ans
 
     def predict(self, tweet, model):
@@ -368,13 +378,13 @@ class unsupervised_OSA(MapFunction):
         k_cur = min(len(self.true_ref_neg), len(self.true_ref_pos))
         for neg_word in self.true_ref_neg[:k_cur]:
             try:
-                logging.warning("pos dot products "+str(dot(sentence_vec, model.wv[neg_word]) / (norm(sentence_vec) * norm(model.wv[neg_word]))))
+                # logging.warning("pos dot products "+str(dot(sentence_vec, model.wv[neg_word]) / (norm(sentence_vec) * norm(model.wv[neg_word]))))
                 cos_sim_bad += dot(sentence_vec, model.wv[neg_word]) / (norm(sentence_vec) * norm(model.wv[neg_word]))
             except:
                 pass
         for pos_word in self.true_ref_pos[:k_cur]:
             try:
-                logging.warning("neg do prodcuts: "+str( dot(sentence_vec, model.wv[pos_word]) / (norm(sentence_vec) * norm(model.wv[pos_word]))))
+                # logging.warning("neg do prodcuts: "+str( dot(sentence_vec, model.wv[pos_word]) / (norm(sentence_vec) * norm(model.wv[pos_word]))))
                 cos_sim_good += dot(sentence_vec, model.wv[pos_word]) / (norm(sentence_vec) * norm(model.wv[pos_word]))
             except:
                 pass
@@ -403,12 +413,13 @@ if __name__ == '__main__':
     from time import time
     import pandas as pd
 
-    parallelism = 4
+    parallelism = 1
     # the labels of dataset are only used for accuracy computation, since PLStream is unsupervised
     f = pd.read_csv('./train.csv')  # , encoding='ISO-8859-1'
     f.columns = ["label", "review"]
     # 20,000 data for quick testing
-    test_N = 80
+    test_N = 60000
+    collector_size = 2000
     true_label = list(f.label)[:test_N]
     for i in range(len(true_label)):
         if true_label[i] == 1:
@@ -428,14 +439,14 @@ if __name__ == '__main__':
         env.set_parallelism(1)
         env.get_checkpoint_config().set_checkpointing_mode(CheckpointingMode.EXACTLY_ONCE)
         ds = env.from_collection(collection=data_stream)
-        ds=ds.map(unsupervised_OSA()).set_parallelism(parallelism) \
+        ds = ds.map(unsupervised_OSA(collector_size)).set_parallelism(parallelism) \
             .filter(lambda x: x[0] != 'collecting') \
             .key_by(lambda x: x[0], key_type=Types.STRING()) \
-            .reduce(lambda x, y: (x[0], unsupervised_OSA().model_merge(x, y))).set_parallelism(2) \
+            .reduce(lambda x, y: (unsupervised_OSA(collector_size).model_merge(x, y))).set_parallelism(2) \
             .filter(lambda x: x[0] != 'model') \
-            .map(for_output(), output_type=Types.STRING()).set_parallelism(1) 
-            # .add_sink(StreamingFileSink  # .set_parallelism(2)
-            #           .for_row_format('./output', Encoder.simple_string_encoder())
-            #           .build())
+            .map(for_output(), output_type=Types.STRING()).set_parallelism(1)
+        # .add_sink(StreamingFileSink  # .set_parallelism(2)
+        #           .for_row_format('./output', Encoder.simple_string_encoder())
+        #           .build())
         ds.print()
         env.execute("osa_job")
