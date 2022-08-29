@@ -27,7 +27,7 @@ class Supervised_OSA_inference(MapFunction):
         self.data = []
         self.collector = []
         self.output = []
-        self.collector_size = 5
+        self.collector_size = 2000
         self.with_accuracy = with_accuracy
         self.redis = None  # do not set redis variable here it gives error
         self.time_threshold = 10 * 60  # time threshold set to 10 mins

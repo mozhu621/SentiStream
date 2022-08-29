@@ -53,7 +53,7 @@ class unsupervised_OSA(MapFunction):
         self.collector = []
         self.cleaned_text = []
         self.stop_words = stopwords.words('english')
-        self.collector_size = 200
+        self.collector_size = 2
 
         # model pruning
         self.LRU_index = ['good', 'bad']
@@ -463,7 +463,7 @@ if __name__ == '__main__':
     f = pd.read_csv('./train.csv', header=None)  # , encoding='ISO-8859-1'
     f.columns = ["label", "review"]
     # 20,000 data for quick testing
-    test_N = 20000
+    test_N = 80
     true_label = list(f.label)[:test_N]
     for i in range(len(true_label)):
         if true_label[i] == 1:
