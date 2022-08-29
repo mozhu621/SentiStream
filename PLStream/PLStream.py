@@ -61,7 +61,7 @@ class unsupervised_OSA(MapFunction):
         self.flag = True
         self.model_to_train = None
         self.timer = time()
-        self.time_to_reset = 30
+        self.time_to_reset = 120
 
         # similarity-based classification preparation
         self.true_ref_neg = []
@@ -166,18 +166,18 @@ class unsupervised_OSA(MapFunction):
         if model1[0] == 'labelled':
             return 'labelled', (model1[1]) + (model2[1])
         elif model1[0] == 'acc':
-            # logging.warning('acc')
+            logging.warning('model_merge acc ')
             # logging.warning("model 1 len: "+str(model1[2]))
             # logging.warning("model 1 acc: "+str(model1[1]))
             # logging.warning("model 2 len: "+str(model2[2]))
             # logging.warning("model 2 acc: "+str(model2[1]))
-            # logging.warning(float(model1[1]) * model1[2] + float(model2[1]) * model2[2])
-            # logging.warning(model1[2]+model2[2])
-            # return 'acc', (float(model1[1]) * model1[2] + float(model2[1]) * model2[2]) / \
-            #        (model1[2] + model2[2]), model1[2] + model2[2]
-            return 'acc', (float(model1[1])  + float(model2[1]) ) /2, model1[2] + model2[2]
+            logging.warning(float(model1[1]) * model1[2] + float(model2[1]) * model2[2])
+            logging.warning(model1[2]+model2[2])
+            return 'acc', (float(model1[1]) * model1[2] + float(model2[1]) * model2[2]) / \
+                   (model1[2] + model2[2]), model1[2] + model2[2]
+            # return 'acc', (float(model1[1])  + float(model2[1]) ) /2, model1[2] + model2[2]
         elif model1[0] == 'model':
-            # logger.info('model_merge model')
+            logger.info('model_merge model')
             model1 = model1[1]
             model2 = model2[1]
             words1 = copy.deepcopy(model1.wv.index_to_key)
@@ -413,13 +413,13 @@ if __name__ == '__main__':
     from time import time
     import pandas as pd
 
-    parallelism = 1
+    parallelism = 4
     # the labels of dataset are only used for accuracy computation, since PLStream is unsupervised
     f = pd.read_csv('./train.csv')  # , encoding='ISO-8859-1'
     f.columns = ["label", "review"]
     # 20,000 data for quick testing
-    test_N = 60000
-    collector_size = 2000
+    test_N = 560000
+    collector_size = 40000
     true_label = list(f.label)[:test_N]
     for i in range(len(true_label)):
         if true_label[i] == 1:
