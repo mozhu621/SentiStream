@@ -106,6 +106,7 @@ class Evaluation(CoMapFunction):
         self.dict1 = defaultdict(lambda: None)  # for first stream
         self.dict2 = defaultdict(lambda: None)  # for second stream
         self.confidence = 0.5
+        self.counter = 0
 
     def calculate_confidence(self, ls, myDict, otherDict, func=default_confidence):
         """
@@ -142,7 +143,10 @@ class Evaluation(CoMapFunction):
         return self.map(ls, self.dict1, self.dict2)
 
     def map2(self, ls):
-        # logging.warning("map2")
+        if self.counter % 1000 == 0:
+
+            logging.warning("comap2 counter count: " + str(self.counter))
+        self.counter += 1
         return self.map(ls, self.dict2, self.dict1, True)
 
 
@@ -161,8 +165,9 @@ def generate_new_label(ds, ds_print=None):
     ds = ds.map(lambda x: x[:-1])
     if not ds_print:
         ds = ds.map(lambda x: str(x[:-1]), output_type=Types.STRING()).add_sink(StreamingFileSink  # .set_parallelism(2)
-                                                    .for_row_format('./senti_output', Encoder.simple_string_encoder())
-                                                    .build())
+                                                                                .for_row_format('./senti_output',
+                                                                                                Encoder.simple_string_encoder())
+                                                                                .build())
     return ds
 
 
@@ -212,6 +217,11 @@ if __name__ == '__main__':
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, format="%(message)s")
     start_time = time()
 
+    test_N = 100000
+    collector_size = 2000
+    unsupervised_map_parallelism = 4
+    classifier_collector_size = 10000
+
     # input_path = './yelp_review_polarity_csv/test.csv'
     # if input_path is not None:
     f = pd.read_csv('./yelp_review_polarity_csv/test.csv', header=None)  # , encoding='ISO-8859-1'
@@ -235,10 +245,10 @@ if __name__ == '__main__':
     env.get_checkpoint_config().set_checkpointing_mode(CheckpointingMode.EXACTLY_ONCE)
     ds = env.from_collection(collection=data_stream)
 
-    ds1 = unsupervised_stream(ds)
+    ds1 = unsupervised_stream(ds, collector_size, map_parallelism=unsupervised_map_parallelism)
     # ds1.print()
     # print(calculate_PLStream_accuracy(ds1))
-    ds2 = classifier(ds)
+    ds2 = classifier(ds, classifier_collector_size)
     # ds2.print()
     # print(calculate_classifier_accuracy(ds2))
     ds = merged_stream(ds1, ds2)

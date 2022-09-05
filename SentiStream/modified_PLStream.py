@@ -40,7 +40,7 @@ logger.addHandler(fh)
 
 class unsupervised_OSA(MapFunction):
 
-    def __init__(self, with_accuracy=True):
+    def __init__(self,collector_size, with_accuracy=True):
         """
         :param with_accuracy: True if labels are provided to the datastream. default value is True
         """
@@ -53,7 +53,7 @@ class unsupervised_OSA(MapFunction):
         self.collector = []
         self.cleaned_text = []
         self.stop_words = stopwords.words('english')
-        self.collector_size = 2
+        self.collector_size = collector_size
 
         # model pruning
         self.LRU_index = ['good', 'bad']
@@ -66,7 +66,7 @@ class unsupervised_OSA(MapFunction):
         self.model_to_train = None
         self.timer = time()
         # self.time_to_reset = 30
-        self.time_to_reset = 30
+        self.time_to_reset = 300
 
         # similarity-based classification preparation
         self.true_ref_neg = []
@@ -439,12 +439,12 @@ class unsupervised_OSA(MapFunction):
             wr.write(m)
 
 
-def unsupervised_stream(ds, map_parallelism=1, reduce_parallelism=2):
+def unsupervised_stream(ds,collector_size, map_parallelism=1, reduce_parallelism=2):
     # ds.print()
-    ds = ds.map(unsupervised_OSA()).set_parallelism(map_parallelism)
+    ds = ds.map(unsupervised_OSA(collector_size)).set_parallelism(map_parallelism)
     ds = ds.filter(lambda x: x[0] != 'collecting')
     ds = ds.key_by(lambda x: x[0], key_type=Types.STRING())
-    ds = ds.reduce(lambda x, y: (unsupervised_OSA().model_merge(x, y))).set_parallelism(reduce_parallelism)
+    ds = ds.reduce(lambda x, y: (unsupervised_OSA(collector_size).model_merge(x, y))).set_parallelism(reduce_parallelism)
     ds = ds.filter(lambda x: x[0] != 'model').map(lambda x: x[1])
     # ds = ds.map(for_output()).set_parallelism(1))
     ds = ds.flat_map(split)  # always put output_type before passing it to file sink
@@ -463,7 +463,8 @@ if __name__ == '__main__':
     f = pd.read_csv('./train.csv', header=None)  # , encoding='ISO-8859-1'
     f.columns = ["label", "review"]
     # 20,000 data for quick testing
-    test_N = 80
+    test_N = 800 # test N limit in husky is 420k
+    collector_size=200
     true_label = list(f.label)[:test_N]
     for i in range(len(true_label)):
         if true_label[i] == 1:
@@ -486,7 +487,7 @@ if __name__ == '__main__':
     env.get_checkpoint_config().set_checkpointing_mode(CheckpointingMode.EXACTLY_ONCE)
     ds = env.from_collection(collection=data_stream)
     # always update ds variable
-    ds = unsupervised_stream(ds, map_parallelism=parallelism)
+    ds = unsupervised_stream(ds,collector_size, map_parallelism=parallelism)
     ds = ds = ds.map(lambda x: str(x), output_type=Types.STRING()).add_sink(StreamingFileSink  # .set_parallelism(2)
                                                 .for_row_format('./output', Encoder.simple_string_encoder())
                                                 .build())
